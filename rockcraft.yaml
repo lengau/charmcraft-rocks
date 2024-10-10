@@ -1,0 +1,94 @@
+name: charmcraft-core22
+base: ubuntu@22.04
+version: 3.1.2
+summary: Pack Ubuntu 22.04 charms
+description: |
+  Charmcraft enables collaboration between operator developers, and
+  publication on Charmhub.io, home of the Open Operator Collection.
+
+  Use `charmcraft` to:
+
+   * Init a new charm file structure
+   * Build your Kubernetes operator charm package
+   * Register your charm name on Charmhub
+   * Upload your charm to Charmhub
+   * Release your charm into channels
+
+  You can use charmcraft with operators written in any language but we
+  recommend the Python Operator Framework from https://pypi.org/project/ops/
+  developed at https://github.com/canonical/operator for ease of development
+  and collaboration.
+
+  Charmcraft and the Python Operator Framework extend the operator pattern
+  beyond Kubernetes with universal operators that drive Linux and
+  Windows apps. The universal operator pattern is very exciting for
+  multi-cloud application management.
+license: GPL-3.0
+platforms:
+  amd64: #TODO
+
+parts:
+  charmcraft:
+    plugin: python
+    source: https://github.com/snapcore/charmcraft.git
+    source-tag: ${CRAFT_PROJECT_VERSION}
+    stage-packages:
+      - python3-venv
+    overlay-packages:
+      # Note: this declaration seems redundant but it's here to ensure that the
+      # Apt installation inside the rock is aware that these Python packages
+      # (python3-venv and its dependencies) are already installed. Otherwise,
+      # installing them (as a build-package in a snapcraft.yaml) would clobber
+      # the sitecustomize.py added by rockcraft.
+      - python3-venv
+    # python-packages:
+      # Limited to < 66 because we need `pkg_resources` and because `python-apt`
+      # does not build with the latest (shouldn't this be in constraints.txt?)
+      # - setuptools<66
+    python-requirements:
+      - requirements.txt
+    organize:
+      # Put craftctl into its own directory that can be included in the PATH
+      # without including other binaries.
+      bin/craftctl: usr/libexec/charmcraft/craftctl
+    stage:
+      # Explicitly filter out the pip installed in Snapcraft's virtual environment,
+      # because it can conflict with the Python installation in the rock and
+      # the virtual environments created by the 'python' plugin when executing
+      # Snapcraft.
+      - -bin/pip*
+      - -lib/python3.*/site-packages/pip*
+
+  build-deps:
+    plugin: nil
+    build-packages:
+      - libapt-pkg-dev
+
+  run-deps:
+    plugin: nil
+    stage-packages:
+      - binutils
+      - snapd
+    override-build: |
+      # This is where projects on the host should be mounted
+      mkdir -p ${CRAFT_PART_INSTALL}/project
+
+  startup-script:
+    plugin: dump
+    source: src
+
+entrypoint-service: charmcraft
+
+services:
+  charmcraft:
+    override: replace
+    command: /bin/run-charmcraft.sh [ pack ]
+    working-dir: /project
+    startup: enabled
+    on-success: shutdown
+    on-failure: shutdown
+    environment:
+      # default to destructive builds
+      SNAPCRAFT_BUILD_ENVIRONMENT: host
+      # put libexec on the path, for craftctl
+      PATH: /usr/libexec/charmcraft:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
